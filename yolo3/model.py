@@ -193,7 +193,7 @@ def yolo_eval(yolo_outputs,
               iou_threshold=.5):
     """Evaluate YOLO model on given input and return filtered boxes."""
     num_layers = len(yolo_outputs)
-    anchor_mask = [[6,7,8], [3,4,5], [0,1,2]] if num_layers==3 else [[3,4,5], [1,2,3]] # default setting
+    anchor_mask = [[6,7,8], [3,4,5], [0,1,2]] if num_layers==3 else [[3,4,5], [1,2, 3]] # default setting
     input_shape = K.shape(yolo_outputs[0])[1:3] * 32
     boxes = []
     box_scores = []
@@ -358,6 +358,11 @@ def yolo_loss(args, anchors, num_classes, ignore_thresh=.5, print_loss=False):
     loss: tensor, shape=(1,)
 
     '''
+    lambda_cord = 5
+    lambda_class = 1
+    lambda_no_object = 0.5
+    lambda_object = 1
+
     num_layers = len(anchors)//3 # default setting
     yolo_outputs = args[:num_layers]
     y_true = args[num_layers:]
@@ -370,6 +375,7 @@ def yolo_loss(args, anchors, num_classes, ignore_thresh=.5, print_loss=False):
 
     for l in range(num_layers):
         object_mask = y_true[l][..., 4:5]
+        unique_object_mask, idx = tf.unique(tf.reshape(object_mask, [-1]))
         true_class_probs = y_true[l][..., 5:]
 
         temp = anchors[anchor_mask[l]]
@@ -383,6 +389,7 @@ def yolo_loss(args, anchors, num_classes, ignore_thresh=.5, print_loss=False):
         raw_true_wh = K.log(y_true[l][..., 2:4] / anchors[anchor_mask[l]] * input_shape[::-1])
         raw_true_wh = K.switch(object_mask, raw_true_wh, K.zeros_like(raw_true_wh)) # avoid log(0)=-inf
         box_loss_scale = 2 - y_true[l][...,2:3]*y_true[l][...,3:4]
+        box_loss_scale_unique, idx = tf.unique(tf.reshape(box_loss_scale, [-1]))
 
         # Find ignore mask, iterate over each of batch.
         ignore_mask = tf.TensorArray(K.dtype(y_true[0]), size=1, dynamic_size=True)
@@ -400,15 +407,31 @@ def yolo_loss(args, anchors, num_classes, ignore_thresh=.5, print_loss=False):
         # K.binary_crossentropy is helpful to avoid exp overflow.
         xy_loss = object_mask * box_loss_scale * K.binary_crossentropy(raw_true_xy, raw_pred[...,0:2], from_logits=True)
         wh_loss = object_mask * box_loss_scale * 0.5 * K.square(raw_true_wh-raw_pred[...,2:4])
-        confidence_loss = object_mask * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True)+ \
-            (1-object_mask) * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True) * ignore_mask
+        confidence_loss_object = object_mask * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True)
+        confidence_loss_background = (1-object_mask) * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True) * ignore_mask
+        confidence_loss = confidence_loss_object + confidence_loss_background
         class_loss = object_mask * K.binary_crossentropy(true_class_probs, raw_pred[...,5:], from_logits=True)
 
         xy_loss = K.sum(xy_loss) / mf
         wh_loss = K.sum(wh_loss) / mf
         confidence_loss = K.sum(confidence_loss) / mf
+        confidence_loss_object = K.sum(confidence_loss_object)
+        confidence_loss_background = K.sum(confidence_loss_background)
         class_loss = K.sum(class_loss) / mf
         loss += xy_loss + wh_loss + confidence_loss + class_loss
         if print_loss:
-            loss = tf.Print(loss, [loss, xy_loss, wh_loss, confidence_loss, class_loss, K.sum(ignore_mask)], message='loss: ')
+            # loss = tf.Print(loss, [loss, xy_loss, wh_loss, confidence_loss, class_loss, K.sum(ignore_mask)], message='loss: ')
+            loss = tf.Print(loss, [loss], message='loss: ')
+            loss = tf.Print(loss, [xy_loss], message='xy_loss: ')
+            loss = tf.Print(loss, [wh_loss], message='wh_loss: ')
+            loss = tf.Print(loss, [confidence_loss], message='confidence_loss: ')
+            loss = tf.Print(loss, [class_loss], message='class_loss: ')
+            loss = tf.Print(loss, [box_loss_scale_unique], message='box_loss_scale_unique ')
+            loss = tf.Print(loss, [object_mask], message='object mask')
+            loss = tf.Print(loss, [unique_object_mask], message='object mask unique')
+            loss = tf.Print(loss, [confidence_loss_object], message='confidence loss when class is 1')
+            loss = tf.Print(loss, [confidence_loss_background], message='confidence loss when class is 0')
+            loss = tf.Print(loss, [confidence_loss], message='confidence loss')
     return loss
+
+
