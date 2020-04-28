@@ -388,7 +388,10 @@ def yolo_loss(args, anchors, num_classes, ignore_thresh=.5, print_loss=False):
         raw_true_xy = y_true[l][..., :2]*grid_shapes[l][::-1] - grid
         raw_true_wh = K.log(y_true[l][..., 2:4] / anchors[anchor_mask[l]] * input_shape[::-1])
         raw_true_wh = K.switch(object_mask, raw_true_wh, K.zeros_like(raw_true_wh)) # avoid log(0)=-inf
-        box_loss_scale = 2 - y_true[l][...,2:3]*y_true[l][...,3:4]
+
+        #coordinate loss factor
+        box_loss_scale = lambda_cord - y_true[l][...,2:3]*y_true[l][...,3:4]
+
         box_loss_scale_unique, idx = tf.unique(tf.reshape(box_loss_scale, [-1]))
 
         # Find ignore mask, iterate over each of batch.
@@ -405,12 +408,18 @@ def yolo_loss(args, anchors, num_classes, ignore_thresh=.5, print_loss=False):
         ignore_mask = K.expand_dims(ignore_mask, -1)
 
         # K.binary_crossentropy is helpful to avoid exp overflow.
+        #coordinate loss
         xy_loss = object_mask * box_loss_scale * K.binary_crossentropy(raw_true_xy, raw_pred[...,0:2], from_logits=True)
         wh_loss = object_mask * box_loss_scale * 0.5 * K.square(raw_true_wh-raw_pred[...,2:4])
-        confidence_loss_object = object_mask * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True)
-        confidence_loss_background = (1-object_mask) * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True) * ignore_mask
+
+
+        #confidence loss
+        confidence_loss_object = lambda_object * object_mask * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True)
+        confidence_loss_background = lambda_no_object * (1-object_mask) * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True) * ignore_mask
+
         confidence_loss = confidence_loss_object + confidence_loss_background
-        class_loss = object_mask * K.binary_crossentropy(true_class_probs, raw_pred[...,5:], from_logits=True)
+
+        class_loss = lambda_class * object_mask * K.binary_crossentropy(true_class_probs, raw_pred[...,5:], from_logits=True)
 
         xy_loss = K.sum(xy_loss) / mf
         wh_loss = K.sum(wh_loss) / mf

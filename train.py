@@ -32,7 +32,7 @@ def _main(**kwargs):
             freeze_body=2, weights_path=kwargs.get('model_path'))
     else:
         model = create_model(input_shape, anchors, num_classes,
-            freeze_body=2, weights_path=kwargs.get('model_path')) # make sure you know what you freeze
+            freeze_body=2, weights_path=kwargs.get('model_path'), print_loss=kwargs.get('debug')) # make sure you know what you freeze
 
     logging = TensorBoard(log_dir=log_dir)
     checkpoint = ModelCheckpoint(log_dir + 'ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5',
@@ -63,7 +63,7 @@ def _main(**kwargs):
                 validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
                 validation_steps=max(1, num_val//batch_size),
                 epochs=50,
-                initial_epoch=32,
+                initial_epoch=6,
                 callbacks=[logging, checkpoint])
         model.save_weights(log_dir + 'trained_weights_stage_1.h5')
 
@@ -104,8 +104,8 @@ def get_anchors(anchors_path):
     return np.array(anchors).reshape(-1, 2)
 
 
-def create_model(input_shape, anchors, num_classes, load_pretrained=True, freeze_body=2,
-            weights_path='model_data/yolo_weights.h5'):
+def create_model(input_shape, anchors, num_classes,print_loss ,load_pretrained=True, freeze_body=2,
+            weights_path='model_data/yolo_weights.h5') :
     '''create the training model'''
     K.clear_session() # get a new session
     image_input = Input(shape=(None, None, 3))
@@ -128,7 +128,7 @@ def create_model(input_shape, anchors, num_classes, load_pretrained=True, freeze
             print('Freeze the first {} layers of total {} layers.'.format(num, len(model_body.layers)))
 
     model_loss = Lambda(yolo_loss, output_shape=(1,), name='yolo_loss',
-        arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.5, 'print_loss' : True})(
+        arguments={'anchors': anchors, 'num_classes': num_classes, 'ignore_thresh': 0.5, 'print_loss' : print_loss})(
         [*model_body.output, *y_true])
     model = Model([model_body.input, *y_true], model_loss)
 
@@ -192,5 +192,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='parser for yolo train')
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--unfreeze', default=False, action='store_true')
+    parser.add_argument('--debug', default=False, action='store_true')
     FLAGS = parser.parse_args()
     _main(**vars(FLAGS))
