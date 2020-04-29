@@ -110,6 +110,6 @@ def create_file(folder_path, type_file='train'):
 
 if __name__ == '__main__':
 	# all_folders = os.listdir("/home/kartik/Downloads/Data-20200416T060849Z-001/Data/completed")
-	create_file(folder_path="/home/kartik/Downloads/Data-20200416T060849Z-001/Data/completed")
-	create_file(folder_path="/home/kartik/Downloads/Data-20200416T060849Z-001/Data/completed", type_file='val')
+	create_file(folder_path="/home/siddhant/aramco/completed")
+	#create_file(folder_path="/home/kartik/Downloads/Data-20200416T060849Z-001/Data/completed", type_file='val')
 	pass
