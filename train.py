@@ -19,7 +19,7 @@ import argparse
 def _main(**kwargs):
     temp = kwargs
     annotation_path = 'train.txt'
-    log_dir = 'logs/000/'
+    log_dir = kwargs.get('model_save_path')
     classes_path = 'model_data/joint_classes.txt'
     anchors_path = 'model_data/joint_anchors.txt'
     class_names = get_classes(classes_path)
@@ -54,18 +54,18 @@ def _main(**kwargs):
     # Train with frozen layers first, to get a stable loss.
     # Adjust num epochs to your dataset. This step is enough to obtain a not bad model.
     if not kwargs.get('unfreeze'):
-        model.compile(optimizer=Adam(lr=1e-3), loss={
+        model.compile(optimizer=Adam(lr=kwargs.get('learning_rate')), loss={
             # use custom yolo_loss Lambda layer.
             'yolo_loss': lambda y_true, y_pred: y_pred})
 
-        batch_size = 1
+        batch_size = kwargs.get('batch_size')
         print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
         model.fit_generator(data_generator_wrapper(lines[:num_train], batch_size, input_shape, anchors, num_classes),
                 steps_per_epoch=max(1, num_train//batch_size),
                 validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
                 validation_steps=max(1, num_val//batch_size),
-                epochs=50,
-                initial_epoch=6,
+                epochs=kwargs.get('epcohs'),
+                initial_epoch=kwargs.get('start_epcoh'),
                 callbacks=[logging, checkpoint])
         model.save_weights(log_dir + 'trained_weights_stage_1.h5')
 
@@ -74,7 +74,7 @@ def _main(**kwargs):
     else:
         for i in range(len(model.layers)):
             model.layers[i].trainable = True
-        model.compile(optimizer=Adam(lr=1e-4), loss={'yolo_loss': lambda y_true, y_pred: y_pred}) # recompile to apply the change
+        model.compile(optimizer=Adam(lr=kwargs.get('learning_rate')), loss={'yolo_loss': lambda y_true, y_pred: y_pred}) # recompile to apply the change
         print('Unfreeze all of the layers.')
 
         batch_size = 12 # note that more GPU memory is required after unfreezing the body
@@ -83,8 +83,8 @@ def _main(**kwargs):
             steps_per_epoch=max(1, num_train//batch_size),
             validation_data=data_generator_wrapper(lines[num_train:], batch_size, input_shape, anchors, num_classes),
             validation_steps=max(1, num_val//batch_size),
-            epochs=100,
-            initial_epoch=50,
+            epochs=kwargs.get('epochs'),
+            initial_epoch=kwargs.get('start_epoch'),
             callbacks=[logging, checkpoint, reduce_lr, early_stopping])
         model.save_weights(log_dir + 'trained_weights_final.h5')
 
@@ -195,5 +195,11 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', type=str, required=True)
     parser.add_argument('--unfreeze', default=False, action='store_true')
     parser.add_argument('--debug', default=False, action='store_true')
+    parser.add_argument('--batch_size', type=int, default=12)
+    parser.add_argument('--start_epoch', type=int, default=0)
+    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--learning_rate', type=float, default=0.0001)
+    parser.add_argument('--model_save_path', type=str, default='logs/000')
+
     FLAGS = parser.parse_args()
     _main(**vars(FLAGS))
