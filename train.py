@@ -4,6 +4,8 @@ Retrain the YOLO model for your own dataset.
 
 import numpy as np
 import keras.backend as K
+cfg = K.tf.ConfigProto(gpu_options={'allow_growth': True})
+K.set_session(K.tf.Session(config=cfg))
 from keras.layers import Input, Lambda
 from keras.models import Model
 from keras.optimizers import Adam
@@ -56,7 +58,7 @@ def _main(**kwargs):
             # use custom yolo_loss Lambda layer.
             'yolo_loss': lambda y_true, y_pred: y_pred})
 
-        batch_size = 32
+        batch_size = 1
         print('Train on {} samples, val on {} samples, with batch size {}.'.format(num_train, num_val, batch_size))
         model.fit_generator(data_generator_wrapper(lines[:num_train], batch_size, input_shape, anchors, num_classes),
                 steps_per_epoch=max(1, num_train//batch_size),
