@@ -19,7 +19,7 @@ def _main(**kwargs):
     annotation_path = 'train.txt'
     log_dir = kwargs.get('model_save_path')
     classes_path = 'model_data/joint_classes.txt'
-    anchors_path = 'model_data/joint_anchors.txt'
+    anchors_path = 'model_data/tiny_joint_anchors.txt'
     class_names = get_classes(classes_path)
     num_classes = len(class_names)
     anchors = get_anchors(anchors_path)
